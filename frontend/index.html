@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>URLGuard - AI Malicious URL Detector</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14213d;--mute:#5b6478;--line:#e3e6ec;
+--safe:#1b8a5a;--sus:#c77a00;--bad:#c62f3b;--accent:#14213d}
+@media (prefers-color-scheme:dark){:root{--bg:#0e131b;--card:#171e2a;--ink:#eef1f6;--mute:#9aa4b8;--line:#2a3345;--accent:#eef1f6}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Georgia,"Times New Roman",serif}
+main{max-width:860px;margin:0 auto;padding:40px 20px 60px}
+h1{font-size:2.2rem;margin:0 0 4px;letter-spacing:-.5px}
+.sub{color:var(--mute);margin:0 0 28px}
+.row{display:flex;gap:10px}
+input{flex:1;padding:14px 16px;font:15px ui-monospace,Menlo,Consolas,monospace;border:2px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)}
+input:focus{outline:none;border-color:var(--accent)}
+button{padding:0 22px;font:600 15px system-ui,sans-serif;border:0;border-radius:8px;background:var(--accent);color:var(--bg);cursor:pointer}
+button:disabled{opacity:.5}
+.ex{margin:12px 0 28px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:13px system-ui,sans-serif;color:var(--mute)}
+.ex a{padding:4px 10px;border:1px solid var(--line);border-radius:99px;cursor:pointer;color:var(--ink);background:var(--card)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:18px}
+.verdict{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.score{font:700 3rem/1 system-ui,sans-serif}
+.label{font:700 1.5rem system-ui,sans-serif}
+.bar{height:12px;border-radius:6px;margin-top:6px;background:linear-gradient(90deg,var(--safe) 0 35%,var(--sus) 35% 70%,var(--bad) 70%);position:relative;min-width:260px}
+.bar i{position:absolute;top:-5px;width:4px;height:22px;background:var(--ink);border-radius:2px;transition:left .5s}
+.url{font:13px ui-monospace,monospace;word-break:break-all;color:var(--mute);margin-top:12px}
+h2{font:600 1.05rem system-ui,sans-serif;margin:0 0 12px}
+ul{list-style:none;padding:0;margin:0}
+li.ind{padding:9px 12px;margin-bottom:7px;border-left:4px solid;border-radius:4px;background:var(--bg);font:14px system-ui,sans-serif}
+.high{border-color:var(--bad)}.medium{border-color:var(--sus)}.low{border-color:#8a94a8}.good{border-color:var(--safe)}
+.tag{font-weight:700;margin-right:6px}
+table{width:100%;border-collapse:collapse;font:14px system-ui,sans-serif}
+th,td{padding:8px 6px;text-align:right;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+.fi{display:flex;align-items:center;gap:10px;font:13px system-ui,sans-serif;margin:5px 0}
+.fi span:first-child{width:150px}.fi b{display:block;height:10px;background:var(--accent);border-radius:3px}
+.note{font:12px system-ui,sans-serif;color:var(--mute);margin-top:10px}
+.err{color:var(--bad);font:14px system-ui,sans-serif}
+</style>
+</head>
+<body>
+<main>
+  <h1>URLGuard</h1>
+  <p class="sub">Paste a link before you click it. A machine-learning model scores it and explains why.</p>
+  <div class="row">
+    <input id="url" placeholder="e.g. secure-login-paypal.verify-account.xyz/update" autofocus>
+    <button id="go">Analyze</button>
+  </div>
+  <div class="ex"><span>Try:</span>
+    <a>https://www.wikipedia.org/wiki/Python</a>
+    <a>secure-login-paypal.verify-account.xyz/update</a>
+    <a>http://185.23.4.9/login.php?id=88</a>
+    <a>http://paypa1.com/signin</a>
+    <a>https://www.amazon.in/gp/cart</a>
+  </div>
+  <div id="result"></div>
+  <div class="card" id="metrics"><h2>Model performance</h2><div id="mbody">Loading...</div></div>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const COLORS = {Safe:'var(--safe)', Suspicious:'var(--sus)', Malicious:'var(--bad)'};
+const TAGS = {high:'High', medium:'Medium', low:'Low', good:'OK'};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function analyze(){
+  const url = $('url').value.trim(); if(!url) return;
+  $('go').disabled = true; $('result').innerHTML = '';
+  try{
+    const r = await fetch('/api/predict',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})});
+    const d = await r.json(); if(!r.ok) throw new Error(d.error);
+    $('result').innerHTML = `
+      <div class="card"><div class="verdict">
+        <div><div class="score" style="color:${COLORS[d.label]}">${d.risk_score}%</div><div class="note">risk score</div></div>
+        <div style="flex:1"><div class="label" style="color:${COLORS[d.label]}">${d.label}</div>
+          <div class="bar"><i style="left:calc(${d.risk_score}% - 2px)"></i></div></div>
+      </div><div class="url">${esc(d.url)}</div></div>
+      <div class="card"><h2>Why this verdict</h2><ul>${d.indicators.map(i=>
+        `<li class="ind ${i.severity}"><span class="tag">${TAGS[i.severity]}</span>${esc(i.text)}</li>`).join('')}</ul>
+        <div class="note">Analysis uses the URL text only; page content and domain age are not checked.</div></div>`;
+  }catch(e){ $('result').innerHTML = `<p class="err">${esc(e.message)}</p>`; }
+  $('go').disabled = false;
+}
+
+async function loadMetrics(){
+  try{
+    const m = await (await fetch('/api/metrics')).json(); if(m.error) throw new Error(m.error);
+    const pct = v => (v*100).toFixed(1)+'%';
+    const rows = Object.entries(m.results).map(([n,r]) =>
+      `<tr><td>${esc(n)}${n===m.best_model?' (deployed)':''}</td><td>${pct(r.accuracy)}</td><td>${pct(r.precision)}</td><td>${pct(r.recall)}</td><td>${pct(r.f1)}</td><td>${r.roc_auc.toFixed(3)}</td></tr>`).join('');
+    const mx = Math.max(...m.top_features.map(f=>f.importance));
+    const cm = m.results[m.best_model].confusion_matrix;
+    $('mbody').innerHTML = `
+      <table><tr><th>Model</th><th>Accuracy</th><th>Precision</th><th>Recall</th><th>F1</th><th>AUC</th></tr>${rows}</table>
+      <p class="note">Dataset: ${esc(m.dataset)} - train ${m.train_size}, test ${m.test_size} (split by domain).
+      Confusion matrix of deployed model [[TN, FP],[FN, TP]]: ${JSON.stringify(cm)}</p>
+      <h2 style="margin-top:18px">Most influential features (Random Forest)</h2>
+      ${m.top_features.map(f=>`<div class="fi"><span>${esc(f.feature)}</span><b style="width:${f.importance/mx*55}%"></b><span>${f.importance}</span></div>`).join('')}
+      ${m.dataset==='synthetic_demo'?'<p class="err">Trained on synthetic demo data. Add the real dataset and retrain for honest numbers (see README).</p>':''}`;
+  }catch(e){ $('mbody').textContent = 'Train the model first: python -m backend.train'; }
+}
+
+$('go').onclick = analyze;
+$('url').onkeydown = e => { if(e.key==='Enter') analyze(); };
+document.querySelectorAll('.ex a').forEach(a => a.onclick = () => { $('url').value = a.textContent; analyze(); });
+loadMetrics();
+</script>
+</body>
+</html>

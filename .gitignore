@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.DS_Store
+.idea/
+.vscode/
+# large real dataset - download yourself, don't commit
+data/malicious_phish.csv
